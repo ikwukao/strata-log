@@ -1,3 +1,4 @@
+// Strata-Log is a high-performance structured logging service.
 package main
 
 import (

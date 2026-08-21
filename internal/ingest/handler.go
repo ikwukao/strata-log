@@ -1,3 +1,5 @@
+// Package ingest provides HTTP ingestion handlers and data models
+// for receiving structured log entries.
 package ingest
 
 import (
@@ -5,8 +7,10 @@ import (
 	"net/http"
 )
 
-const maxRequestBodySize = 1 << 20 // 1 MiB
+// maxRequestBodySize limits individual ingestion requests to 1 MiB.
+const maxRequestBodySize = 1 << 20
 
+// HealthHandler reports the health of the Strata-Log HTTP service.
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -14,6 +18,10 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"ok"}`))
 }
 
+// LogHandler accepts structured log entries through POST /v1/logs.
+//
+// Requests are limited to 1 MiB and unknown JSON fields are rejected.
+// Valid entries are acknowledged with HTTP 202 Accepted.
 func LogHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

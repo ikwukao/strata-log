@@ -1,3 +1,5 @@
+// Package ingest provides HTTP ingestion handlers and data models
+// for receiving structured log entries.
 package ingest
 
 import (
@@ -6,6 +8,7 @@ import (
 	"time"
 )
 
+// LogEntry represents a single structured log event submitted to Strata-Log.
 type LogEntry struct {
 	Timestamp time.Time      `json:"timestamp"`
 	Level     string         `json:"level"`
@@ -14,6 +17,7 @@ type LogEntry struct {
 	Fields    map[string]any `json:"fields,omitempty"`
 }
 
+// Validate checks whether the log entry contains all required fields.
 func (l LogEntry) Validate() error {
 	if l.Timestamp.IsZero() {
 		return errors.New("timestamp is required")

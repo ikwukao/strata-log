@@ -1,3 +1,4 @@
+// Package config provides runtime configuration for Strata-Log.
 package config
 
 import (
@@ -6,6 +7,7 @@ import (
 	"time"
 )
 
+// Config contains the runtime configuration for Strata-Log.
 type Config struct {
 	Server   ServerConfig
 	Storage  StorageConfig
@@ -14,6 +16,7 @@ type Config struct {
 	Shutdown ShutdownConfig
 }
 
+// ServerConfig controls the HTTP server.
 type ServerConfig struct {
 	Host            string
 	Port            int
@@ -27,6 +30,7 @@ func (c ServerConfig) Address() string {
 	return c.Host + ":" + strconv.Itoa(c.Port)
 }
 
+// StorageConfig controls persistent log storage.
 type StorageConfig struct {
 	Path string
 }
@@ -40,10 +44,13 @@ type BatcherConfig struct {
 	FlushPeriod time.Duration
 }
 
+// ShutdownConfig controls graceful server shutdown.
 type ShutdownConfig struct {
 	Timeout time.Duration
 }
 
+// Load reads Strata-Log configuration from environment variables
+// and returns a configuration populated with safe defaults.
 func Load() Config {
 	return Config{
 		Server: ServerConfig{

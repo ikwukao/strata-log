@@ -1,3 +1,5 @@
+// Package pipeline provides concurrent processing primitives for
+// moving data through worker-based processing stages.
 package pipeline
 
 import (
@@ -6,10 +8,17 @@ import (
 	"sync"
 )
 
+// ErrClosed indicates that the pipeline no longer accepts new work.
 var ErrClosed = errors.New("pipeline is closed")
 
+// Handler processes a single pipeline item.
 type Handler[T any] func(context.Context, T) error
 
+// Pipeline processes items concurrently using a configurable number
+// of worker goroutines.
+//
+// Items submitted to the pipeline are placed into a bounded input
+// queue and processed by the configured handler.
 type Pipeline[T any] struct {
 	handler Handler[T]
 
@@ -27,6 +36,11 @@ type Pipeline[T any] struct {
 	closed bool
 }
 
+// New creates and starts a Pipeline.
+//
+// workers determines the number of concurrent processing goroutines.
+// bufferSize determines how many submitted items may wait for processing.
+// handler processes each submitted item.
 func New[T any](
 	parent context.Context,
 	workers int,
@@ -83,6 +97,10 @@ func (p *Pipeline[T]) worker() {
 	}
 }
 
+// Submit adds an item to the pipeline for processing.
+//
+// Submit returns ErrClosed if the pipeline has stopped accepting work
+// or its parent context has been cancelled.
 func (p *Pipeline[T]) Submit(item T) error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -100,10 +118,16 @@ func (p *Pipeline[T]) Submit(item T) error {
 	}
 }
 
+// Errors returns a channel containing errors produced by item handlers.
 func (p *Pipeline[T]) Errors() <-chan error {
 	return p.errors
 }
 
+// Close stops the pipeline from accepting new work, drains all items
+// already accepted into the input queue, waits for workers to finish,
+// and then releases pipeline resources.
+//
+// Close is safe to call multiple times.
 func (p *Pipeline[T]) Close() {
 	p.mu.Lock()
 
@@ -129,6 +153,7 @@ func (p *Pipeline[T]) Close() {
 	close(p.errors)
 }
 
+// Wait blocks until all pipeline workers have exited.
 func (p *Pipeline[T]) Wait() {
 	p.wg.Wait()
 }
