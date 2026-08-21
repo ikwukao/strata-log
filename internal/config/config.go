@@ -23,6 +23,10 @@ type ServerConfig struct {
 	ShutdownTimeout time.Duration
 }
 
+func (c ServerConfig) Address() string {
+	return c.Host + ":" + strconv.Itoa(c.Port)
+}
+
 type StorageConfig struct {
 	Path string
 }
@@ -44,7 +48,7 @@ func Load() Config {
 	return Config{
 		Server: ServerConfig{
 			Host:            getEnv("STRATA_LOG_HOST", "0.0.0.0"),
-			Port:            getEnvInt("STRATA_LOG_PORT", 8080),
+			Port:            getEnvInt("STRATA_LOG_PORT", 9090),
 			ReadTimeout:     getEnvDuration("STRATA_LOG_READ_TIMEOUT", 10*time.Second),
 			WriteTimeout:    getEnvDuration("STRATA_LOG_WRITE_TIMEOUT", 10*time.Second),
 			IdleTimeout:     getEnvDuration("STRATA_LOG_IDLE_TIMEOUT", 60*time.Second),
