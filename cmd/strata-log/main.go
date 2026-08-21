@@ -25,7 +25,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	writer := storage.NewMemoryWriter()
+	writer, err := storage.NewFileWriter(cfg.Storage.Path)
 
 	b, err := batcher.New(
 		ctx,
