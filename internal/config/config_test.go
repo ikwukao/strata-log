@@ -20,8 +20,8 @@ func TestLoadDefaults(t *testing.T) {
 		t.Fatalf("expected default host 0.0.0.0, got %q", cfg.Server.Host)
 	}
 
-	if cfg.Server.Port != 8080 {
-		t.Fatalf("expected default port 8080, got %d", cfg.Server.Port)
+	if cfg.Server.Port != 9090 {
+		t.Fatalf("expected default port 9090, got %d", cfg.Server.Port)
 	}
 
 	if cfg.Storage.Path != "strata-log.db" {
