@@ -20,6 +20,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", ingest.HealthHandler)
+	mux.HandleFunc("/v1/logs", ingest.LogHandler)
 
 	server := &http.Server{
 		Addr:         cfg.Server.Address(),
