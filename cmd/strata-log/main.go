@@ -12,6 +12,7 @@ import (
 
 	"github.com/ikwukao/strata-log/internal/config"
 	"github.com/ikwukao/strata-log/internal/ingest"
+	"github.com/ikwukao/strata-log/internal/pipeline"
 )
 
 func main() {
@@ -19,9 +20,31 @@ func main() {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
+	processor, err := pipeline.NewLogProcessor(
+		context.Background(),
+		4,
+		1000,
+		func(ctx context.Context, entry ingest.LogEntry) error {
+			logger.Info(
+				"log received",
+				"timestamp", entry.Timestamp,
+				"level", entry.Level,
+				"service", entry.Service,
+				"message", entry.Message,
+			)
+
+			return nil
+		},
+	)
+	if err != nil {
+		logger.Error("failed to initialize log processor", "error", err)
+		os.Exit(1)
+	}
+
 	mux := http.NewServeMux()
+
 	mux.HandleFunc("/healthz", ingest.HealthHandler)
-	mux.HandleFunc("/v1/logs", ingest.LogHandler)
+	mux.Handle("/v1/logs", ingest.ProcessHandler(processor))
 
 	server := &http.Server{
 		Addr:         cfg.Server.Address(),
@@ -60,9 +83,12 @@ func main() {
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		logger.Error("graceful shutdown failed", "error", err)
+		logger.Error("graceful HTTP shutdown failed", "error", err)
+		processor.Close()
 		os.Exit(1)
 	}
+
+	processor.Close()
 
 	logger.Info("Strata-Log stopped")
 }
