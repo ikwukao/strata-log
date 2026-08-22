@@ -14,6 +14,7 @@ import (
 	"github.com/ikwukao/strata-log/internal/config"
 	"github.com/ikwukao/strata-log/internal/ingest"
 	"github.com/ikwukao/strata-log/internal/pipeline"
+	"github.com/ikwukao/strata-log/internal/query"
 	"github.com/ikwukao/strata-log/internal/storage"
 )
 
@@ -25,9 +26,11 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	writer, err := storage.NewFileWriter(cfg.Storage.Path)
+	// Initialize the SQLite storage backend.
+	writer, err := storage.NewSQLiteWriter(cfg.Storage.Path)
 	if err != nil {
-		logger.Error("failed to initialize storage",
+		logger.Error(
+			"failed to initialize storage",
 			"error", err,
 			"path", cfg.Storage.Path,
 		)
@@ -35,6 +38,23 @@ func main() {
 	}
 	defer writer.Close()
 
+	// SQLiteWriter implements storage.Reader as well as storage.Writer.
+	var reader storage.Reader = writer
+
+	// Initialize the query service used by GET /v1/logs.
+	queryService, err := query.NewService(reader)
+	if err != nil {
+		logger.Error(
+			"failed to initialize query service",
+			"error", err,
+		)
+		os.Exit(1)
+	}
+
+	queryHandler := query.NewHandler(queryService)
+
+	// Initialize the batcher responsible for grouping log entries
+	// before they are persisted.
 	b, err := batcher.New(
 		ctx,
 		writer,
@@ -43,10 +63,14 @@ func main() {
 		1000,
 	)
 	if err != nil {
-		logger.Error("failed to initialize batcher", "error", err)
+		logger.Error(
+			"failed to initialize batcher",
+			"error", err,
+		)
 		os.Exit(1)
 	}
 
+	// Initialize the asynchronous log processor.
 	processor, err := pipeline.NewLogProcessor(
 		ctx,
 		4,
@@ -56,21 +80,57 @@ func main() {
 		},
 	)
 	if err != nil {
-		logger.Error("failed to initialize log processor", "error", err)
+		logger.Error(
+			"failed to initialize log processor",
+			"error", err,
+		)
 		b.Close()
 		os.Exit(1)
 	}
 
+	// Monitor asynchronous storage failures from the batcher.
 	go func() {
 		for err := range b.Errors() {
-			logger.Error("batch storage failed", "error", err)
+			logger.Error(
+				"batch storage failed",
+				"error", err,
+			)
 		}
 	}()
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/healthz", ingest.HealthHandler)
-	mux.Handle("/v1/logs", ingest.ProcessHandler(processor))
+	// Health endpoint.
+	mux.HandleFunc(
+		"/healthz",
+		ingest.HealthHandler,
+	)
+
+	// GET /v1/logs -> persisted log queries.
+	//
+	// The same endpoint is intentionally registered only once,
+	// so the query handler must coexist with the ingestion handler.
+	//
+	// We therefore use a method-aware dispatcher below.
+	mux.HandleFunc(
+		"/v1/logs",
+		func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodPost:
+				ingest.ProcessHandler(processor)(w, r)
+
+			case http.MethodGet:
+				queryHandler.ServeHTTP(w, r)
+
+			default:
+				http.Error(
+					w,
+					"method not allowed",
+					http.StatusMethodNotAllowed,
+				)
+			}
+		},
+	)
 
 	server := &http.Server{
 		Addr:         cfg.Server.Address(),
@@ -81,7 +141,11 @@ func main() {
 	}
 
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(
+		stop,
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
 	defer signal.Stop(stop)
 
 	go func() {
@@ -93,7 +157,10 @@ func main() {
 
 		if err := server.ListenAndServe(); err != nil &&
 			!errors.Is(err, http.ErrServerClosed) {
-			logger.Error("server failed", "error", err)
+			logger.Error(
+				"server failed",
+				"error", err,
+			)
 			os.Exit(1)
 		}
 	}()
@@ -109,14 +176,21 @@ func main() {
 	defer shutdownCancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		logger.Error("graceful HTTP shutdown failed", "error", err)
+		logger.Error(
+			"graceful HTTP shutdown failed",
+			"error", err,
+		)
 	}
 
+	// Stop accepting new log entries and flush pending batches.
 	processor.Close()
 	b.Close()
 
 	if err := writer.Close(); err != nil {
-		logger.Error("storage close failed", "error", err)
+		logger.Error(
+			"storage close failed",
+			"error", err,
+		)
 	}
 
 	logger.Info(
