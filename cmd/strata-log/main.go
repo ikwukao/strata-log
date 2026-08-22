@@ -26,6 +26,14 @@ func main() {
 	defer cancel()
 
 	writer, err := storage.NewFileWriter(cfg.Storage.Path)
+	if err != nil {
+		logger.Error("failed to initialize storage",
+			"error", err,
+			"path", cfg.Storage.Path,
+		)
+		os.Exit(1)
+	}
+	defer writer.Close()
 
 	b, err := batcher.New(
 		ctx,
@@ -107,8 +115,12 @@ func main() {
 	processor.Close()
 	b.Close()
 
+	if err := writer.Close(); err != nil {
+		logger.Error("storage close failed", "error", err)
+	}
+
 	logger.Info(
 		"Strata-Log stopped",
-		"stored_logs", writer.Len(),
+		"storage", cfg.Storage.Path,
 	)
 }
