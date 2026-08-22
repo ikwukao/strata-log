@@ -150,3 +150,92 @@ func (w *SQLiteWriter) Close() error {
 
 	return w.db.Close()
 }
+
+// QueryLogs retrieves persisted log entries using the supplied filters.
+func (w *SQLiteWriter) QueryLogs(
+	ctx context.Context,
+	options QueryOptions,
+) ([]LogRecord, error) {
+	limit := options.Limit
+
+	if limit <= 0 {
+		limit = 100
+	}
+
+	if limit > 1000 {
+		limit = 1000
+	}
+
+	query := `
+		SELECT
+			id,
+			timestamp,
+			level,
+			service,
+			message,
+			fields
+		FROM logs
+		WHERE 1 = 1
+	`
+
+	args := make([]any, 0, 3)
+
+	if options.Level != "" {
+		query += " AND level = ?"
+		args = append(args, options.Level)
+	}
+
+	if options.Service != "" {
+		query += " AND service = ?"
+		args = append(args, options.Service)
+	}
+
+	query += " ORDER BY timestamp DESC, id DESC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := w.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query logs: %w", err)
+	}
+	defer rows.Close()
+
+	records := make([]LogRecord, 0, limit)
+
+	for rows.Next() {
+		var (
+			record LogRecord
+			fields string
+		)
+
+		if err := rows.Scan(
+			&record.ID,
+			&record.Timestamp,
+			&record.Level,
+			&record.Service,
+			&record.Message,
+			&fields,
+		); err != nil {
+			return nil, fmt.Errorf("scan log record: %w", err)
+		}
+
+		if fields != "" {
+			if err := json.Unmarshal(
+				[]byte(fields),
+				&record.Fields,
+			); err != nil {
+				return nil, fmt.Errorf(
+					"decode log fields: %w",
+					err,
+				)
+			}
+		}
+
+		records = append(records, record)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate log records: %w", err)
+	}
+
+	return records, nil
+}
