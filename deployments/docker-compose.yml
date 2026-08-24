@@ -1,0 +1,41 @@
+services:
+  strata-log:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+
+    container_name: strata-log
+
+    ports:
+      - "9090:9090"
+
+    environment:
+      STRATA_LOG_HOST: "0.0.0.0"
+      STRATA_LOG_PORT: "9090"
+      STRATA_LOG_STORAGE_PATH: "/data/strata-log.db"
+      STRATA_LOG_BUFFER_CAPACITY: "10000"
+      STRATA_LOG_BATCH_SIZE: "100"
+      STRATA_LOG_FLUSH_PERIOD: "500ms"
+      STRATA_LOG_SHUTDOWN_TIMEOUT: "10s"
+
+    volumes:
+      - strata-log-data:/data
+
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "-q",
+          "http://127.0.0.1:9090/healthz"
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  strata-log-data:
