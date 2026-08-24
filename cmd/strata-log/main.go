@@ -115,7 +115,7 @@ func main() {
 	// Monitor successfully persisted batches.
 	go func() {
 		for count := range b.Stored() {
-			for range count {
+			for i := 0; i < count; i++ {
 				metrics.IncStored()
 			}
 		}
@@ -130,11 +130,9 @@ func main() {
 	)
 
 	// Metrics endpoint for Prometheus-compatible monitoring.
-	mux.HandleFunc(
+	mux.Handle(
 		"/metrics",
-		func(w http.ResponseWriter, r *http.Request) {
-			metrics.ServeHTTP(w, r)
-		},
+		metrics,
 	)
 
 	// POST /v1/logs -> asynchronous log ingestion.

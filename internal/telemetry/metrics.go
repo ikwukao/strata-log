@@ -17,10 +17,6 @@ type Metrics struct {
 	errors   uint64
 }
 
-func (m *Metrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	panic("unimplemented")
-}
-
 // NewMetrics creates an initialized metrics collector.
 func NewMetrics() *Metrics {
 	return &Metrics{}
@@ -46,6 +42,20 @@ func (m *Metrics) Snapshot() (ingested, stored, errors uint64) {
 	return atomic.LoadUint64(&m.ingested),
 		atomic.LoadUint64(&m.stored),
 		atomic.LoadUint64(&m.errors)
+}
+
+// ServeHTTP exposes metrics using the Prometheus text exposition format.
+func (m *Metrics) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
+	m.Handler(w, r)
 }
 
 // Handler exposes metrics using the Prometheus text exposition format.
