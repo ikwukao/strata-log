@@ -38,7 +38,7 @@ func main() {
 	}
 	defer writer.Close()
 
-	// SQLiteWriter implements storage.Reader as well as storage.Writer.
+	// SQLiteWriter implements both storage.Reader and storage.Writer.
 	var reader storage.Reader = writer
 
 	// Initialize the query service used by GET /v1/logs.
@@ -88,6 +88,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create the ingestion handler once and reuse it for every request.
+	ingestHandler := ingest.ProcessHandler(processor)
+
 	// Monitor asynchronous storage failures from the batcher.
 	go func() {
 		for err := range b.Errors() {
@@ -106,18 +109,14 @@ func main() {
 		ingest.HealthHandler,
 	)
 
-	// GET /v1/logs -> persisted log queries.
-	//
-	// The same endpoint is intentionally registered only once,
-	// so the query handler must coexist with the ingestion handler.
-	//
-	// We therefore use a method-aware dispatcher below.
+	// POST /v1/logs -> asynchronous log ingestion.
+	// GET  /v1/logs -> persisted log queries.
 	mux.HandleFunc(
 		"/v1/logs",
 		func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost:
-				ingest.ProcessHandler(processor)(w, r)
+				ingestHandler(w, r)
 
 			case http.MethodGet:
 				queryHandler.ServeHTTP(w, r)
@@ -132,6 +131,7 @@ func main() {
 		},
 	)
 
+	// Strata-Log listens on 9090 by default.
 	server := &http.Server{
 		Addr:         cfg.Server.Address(),
 		Handler:      mux,
