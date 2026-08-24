@@ -4,6 +4,7 @@ package storage
 
 import (
 	"context"
+	"time"
 
 	"github.com/ikwukao/strata-log/internal/ingest"
 )
@@ -19,10 +20,27 @@ type Reader interface {
 }
 
 // QueryOptions controls log retrieval.
+//
+// Filters are combined using AND semantics. Results are returned
+// newest-first and constrained by Limit and Offset.
 type QueryOptions struct {
-	Level   string
+	// Level filters logs by severity level.
+	Level string
+
+	// Service filters logs by originating service.
 	Service string
-	Limit   int
+
+	// From filters out logs older than this timestamp.
+	From *time.Time
+
+	// To filters out logs newer than this timestamp.
+	To *time.Time
+
+	// Limit controls the maximum number of records returned.
+	Limit int
+
+	// Offset skips the first Offset matching records.
+	Offset int
 }
 
 // LogRecord represents a persisted log entry.

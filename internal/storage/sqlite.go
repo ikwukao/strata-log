@@ -152,6 +152,9 @@ func (w *SQLiteWriter) Close() error {
 }
 
 // QueryLogs retrieves persisted log entries using the supplied filters.
+//
+// Results are returned newest-first. When multiple records share the same
+// timestamp, the record ID is used as a deterministic tie-breaker.
 func (w *SQLiteWriter) QueryLogs(
 	ctx context.Context,
 	options QueryOptions,
@@ -166,6 +169,11 @@ func (w *SQLiteWriter) QueryLogs(
 		limit = 1000
 	}
 
+	offset := options.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
 	query := `
 		SELECT
 			id,
@@ -178,7 +186,7 @@ func (w *SQLiteWriter) QueryLogs(
 		WHERE 1 = 1
 	`
 
-	args := make([]any, 0, 3)
+	args := make([]any, 0, 6)
 
 	if options.Level != "" {
 		query += " AND level = ?"
@@ -190,8 +198,24 @@ func (w *SQLiteWriter) QueryLogs(
 		args = append(args, options.Service)
 	}
 
-	query += " ORDER BY timestamp DESC, id DESC LIMIT ?"
-	args = append(args, limit)
+	if options.From != nil {
+		query += " AND timestamp >= ?"
+		args = append(
+			args,
+			options.From.UTC().Format(time.RFC3339Nano),
+		)
+	}
+
+	if options.To != nil {
+		query += " AND timestamp <= ?"
+		args = append(
+			args,
+			options.To.UTC().Format(time.RFC3339Nano),
+		)
+	}
+
+	query += " ORDER BY timestamp DESC, id DESC LIMIT ? OFFSET ?"
+	args = append(args, limit, offset)
 
 	rows, err := w.db.QueryContext(ctx, query, args...)
 	if err != nil {

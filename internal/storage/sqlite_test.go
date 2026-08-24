@@ -384,6 +384,160 @@ func TestSQLiteWriterQueryFilters(t *testing.T) {
 	}
 }
 
+func TestSQLiteWriterQueryPagination(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "strata-log.db")
+
+	writer, err := NewSQLiteWriter(path)
+	if err != nil {
+		t.Fatalf("NewSQLiteWriter() error = %v", err)
+	}
+
+	defer writer.Close()
+
+	entries := []ingest.LogEntry{
+		storageTestEntry("first"),
+		storageTestEntry("second"),
+		storageTestEntry("third"),
+		storageTestEntry("fourth"),
+	}
+
+	if err := writer.WriteBatch(
+		context.Background(),
+		entries,
+	); err != nil {
+		t.Fatalf("WriteBatch() error = %v", err)
+	}
+
+	records, err := writer.QueryLogs(
+		context.Background(),
+		QueryOptions{
+			Limit:  2,
+			Offset: 1,
+		},
+	)
+	if err != nil {
+		t.Fatalf("QueryLogs() error = %v", err)
+	}
+
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(records))
+	}
+}
+
+func TestSQLiteWriterQueryTimeRange(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "strata-log.db")
+
+	writer, err := NewSQLiteWriter(path)
+	if err != nil {
+		t.Fatalf("NewSQLiteWriter() error = %v", err)
+	}
+
+	defer writer.Close()
+
+	entries := []ingest.LogEntry{
+		{
+			Timestamp: time.Date(
+				2026,
+				time.August,
+				22,
+				19,
+				0,
+				0,
+				0,
+				time.UTC,
+			),
+			Level:   "info",
+			Service: "api",
+			Message: "before range",
+		},
+		{
+			Timestamp: time.Date(
+				2026,
+				time.August,
+				22,
+				20,
+				0,
+				0,
+				0,
+				time.UTC,
+			),
+			Level:   "info",
+			Service: "api",
+			Message: "inside range",
+		},
+		{
+			Timestamp: time.Date(
+				2026,
+				time.August,
+				22,
+				21,
+				0,
+				0,
+				0,
+				time.UTC,
+			),
+			Level:   "info",
+			Service: "api",
+			Message: "after range",
+		},
+	}
+
+	if err := writer.WriteBatch(
+		context.Background(),
+		entries,
+	); err != nil {
+		t.Fatalf("WriteBatch() error = %v", err)
+	}
+
+	from := time.Date(
+		2026,
+		time.August,
+		22,
+		20,
+		0,
+		0,
+		0,
+		time.UTC,
+	)
+
+	to := time.Date(
+		2026,
+		time.August,
+		22,
+		20,
+		30,
+		0,
+		0,
+		time.UTC,
+	)
+
+	records, err := writer.QueryLogs(
+		context.Background(),
+		QueryOptions{
+			From:  &from,
+			To:    &to,
+			Limit: 10,
+		},
+	)
+	if err != nil {
+		t.Fatalf("QueryLogs() error = %v", err)
+	}
+
+	if len(records) != 1 {
+		t.Fatalf(
+			"expected 1 record in time range, got %d",
+			len(records),
+		)
+	}
+
+	if records[0].Message != "inside range" {
+		t.Fatalf(
+			"expected inside-range record, got %q",
+			records[0].Message,
+		)
+	}
+}
+
 func storageTestEntryWithService(
 	message string,
 	service string,
