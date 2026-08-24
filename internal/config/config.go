@@ -26,19 +26,24 @@ type ServerConfig struct {
 	ShutdownTimeout time.Duration
 }
 
+// Address returns the server listen address.
 func (c ServerConfig) Address() string {
 	return c.Host + ":" + strconv.Itoa(c.Port)
 }
 
-// StorageConfig controls persistent log storage.
+// StorageConfig controls persistent log storage and storage retries.
 type StorageConfig struct {
-	Path string
+	Path          string
+	RetryAttempts int
+	RetryBackoff  time.Duration
 }
 
+// BufferConfig controls the ingestion buffer.
 type BufferConfig struct {
 	Capacity int
 }
 
+// BatcherConfig controls log batching.
 type BatcherConfig struct {
 	MaxSize     int
 	FlushPeriod time.Duration
@@ -63,7 +68,9 @@ func Load() Config {
 		},
 
 		Storage: StorageConfig{
-			Path: getEnv("STRATA_LOG_STORAGE_PATH", "strata-log.db"),
+			Path:          getEnv("STRATA_LOG_STORAGE_PATH", "strata-log.db"),
+			RetryAttempts: getEnvInt("STRATA_LOG_STORAGE_RETRY_ATTEMPTS", 3),
+			RetryBackoff:  getEnvDuration("STRATA_LOG_STORAGE_RETRY_BACKOFF", 100*time.Millisecond),
 		},
 
 		Buffer: BufferConfig{

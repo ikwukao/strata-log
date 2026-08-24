@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/ikwukao/strata-log/internal/batcher"
 	"github.com/ikwukao/strata-log/internal/config"
@@ -60,9 +59,11 @@ func main() {
 	b, err := batcher.New(
 		ctx,
 		writer,
-		100,
-		1*time.Second,
-		1000,
+		cfg.Batcher.MaxSize,
+		cfg.Batcher.FlushPeriod,
+		cfg.Buffer.Capacity,
+		cfg.Storage.RetryAttempts,
+		cfg.Storage.RetryBackoff,
 	)
 	if err != nil {
 		logger.Error(

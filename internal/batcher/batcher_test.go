@@ -28,6 +28,8 @@ func TestBatcherFlushesAtBatchSize(t *testing.T) {
 		3,
 		time.Hour,
 		10,
+		10,
+		time.Second,
 	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -69,6 +71,8 @@ func TestBatcherFlushesOnClose(t *testing.T) {
 		100,
 		time.Hour,
 		10,
+		10,
+		time.Second,
 	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -96,6 +100,8 @@ func TestBatcherFlushesOnInterval(t *testing.T) {
 		100,
 		10*time.Millisecond,
 		10,
+		10,
+		time.Second,
 	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -148,6 +154,8 @@ func TestBatcherReportsStorageErrors(t *testing.T) {
 		1,
 		time.Hour,
 		10,
+		3,
+		time.Millisecond,
 	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -185,6 +193,8 @@ func TestBatcherReportsStoredEntries(t *testing.T) {
 		2,
 		time.Hour,
 		10,
+		10,
+		time.Second,
 	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)

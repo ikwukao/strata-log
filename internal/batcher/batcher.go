@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ikwukao/strata-log/internal/ingest"
+	"github.com/ikwukao/strata-log/internal/resilience"
 	"github.com/ikwukao/strata-log/internal/storage"
 )
 
@@ -23,6 +24,8 @@ type Batcher struct {
 
 	batchSize     int
 	flushInterval time.Duration
+	retryAttempts int
+	retryBackoff  time.Duration
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -42,6 +45,8 @@ func New(
 	batchSize int,
 	flushInterval time.Duration,
 	bufferSize int,
+	retryAttempts int,
+	retryBackoff time.Duration,
 ) (*Batcher, error) {
 	if writer == nil {
 		return nil, errors.New("storage writer is required")
@@ -59,21 +64,30 @@ func New(
 		return nil, errors.New("buffer size must be greater than zero")
 	}
 
+	if retryAttempts <= 0 {
+		return nil, errors.New("retry attempts must be greater than zero")
+	}
+
+	if retryBackoff < 0 {
+		return nil, errors.New("retry backoff must not be negative")
+	}
+
 	ctx, cancel := context.WithCancel(parent)
 
 	b := &Batcher{
 		writer:        writer,
+		input:         make(chan ingest.LogEntry, bufferSize),
 		errors:        make(chan error, 16),
 		stored:        make(chan int, 16),
-		input:         make(chan ingest.LogEntry, bufferSize),
 		batchSize:     batchSize,
 		flushInterval: flushInterval,
+		retryAttempts: retryAttempts,
+		retryBackoff:  retryBackoff,
 		ctx:           ctx,
 		cancel:        cancel,
 	}
 
 	b.wg.Add(1)
-
 	go b.run()
 
 	return b, nil
@@ -101,7 +115,11 @@ func (b *Batcher) Submit(entry ingest.LogEntry) error {
 	}
 }
 
-// Close stops accepting new entries and flushes remaining entries.
+// Close stops accepting new entries and waits for the batcher to stop.
+//
+// Cancellation is triggered first so any in-flight retry operation can
+// terminate promptly. The input channel is then closed so no new entries
+// can be submitted.
 func (b *Batcher) Close() {
 	b.closeOnce.Do(func() {
 		close(b.input)
@@ -120,31 +138,46 @@ func (b *Batcher) run() {
 
 	batch := make([]ingest.LogEntry, 0, b.batchSize)
 
-	flush := func() {
+	flush := func() bool {
 		if len(batch) == 0 {
-			return
+			return true
 		}
 
 		entries := make([]ingest.LogEntry, len(batch))
 		copy(entries, batch)
 
-		if err := b.writer.WriteBatch(b.ctx, entries); err != nil {
-			// Storage error handling will be connected to resilience
-			// and telemetry in a later milestone.
-			select {
-			case b.errors <- err:
-			case <-b.ctx.Done():
+		err := resilience.Retry(
+			b.ctx,
+			b.retryAttempts,
+			b.retryBackoff,
+			func(ctx context.Context) error {
+				return b.writer.WriteBatch(ctx, entries)
+			},
+		)
+
+		if err != nil {
+			// A canceled context means shutdown was requested. Do not
+			// report cancellation as a storage failure.
+			if !errors.Is(err, context.Canceled) &&
+				!errors.Is(err, context.DeadlineExceeded) {
+				select {
+				case b.errors <- err:
+				case <-b.ctx.Done():
+				}
 			}
 
-			return
+			return false
 		}
 
 		select {
 		case b.stored <- len(entries):
 		case <-b.ctx.Done():
+			return false
 		}
 
 		batch = batch[:0]
+
+		return true
 	}
 
 	for {
@@ -158,11 +191,15 @@ func (b *Batcher) run() {
 			batch = append(batch, entry)
 
 			if len(batch) >= b.batchSize {
-				flush()
+				if !flush() {
+					return
+				}
 			}
 
 		case <-ticker.C:
-			flush()
+			if !flush() {
+				return
+			}
 
 		case <-b.ctx.Done():
 			return
