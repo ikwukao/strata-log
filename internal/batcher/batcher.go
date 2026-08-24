@@ -28,6 +28,7 @@ type Batcher struct {
 	cancel context.CancelFunc
 
 	errors chan error
+	stored chan int
 
 	wg sync.WaitGroup
 
@@ -63,6 +64,7 @@ func New(
 	b := &Batcher{
 		writer:        writer,
 		errors:        make(chan error, 16),
+		stored:        make(chan int, 16),
 		input:         make(chan ingest.LogEntry, bufferSize),
 		batchSize:     batchSize,
 		flushInterval: flushInterval,
@@ -80,6 +82,12 @@ func New(
 // Errors returns a channel containing asynchronous storage errors.
 func (b *Batcher) Errors() <-chan error {
 	return b.errors
+}
+
+// Stored returns a channel containing the number of entries
+// successfully persisted by each batch.
+func (b *Batcher) Stored() <-chan int {
+	return b.stored
 }
 
 // Submit adds a log entry to the batcher.
@@ -105,6 +113,7 @@ func (b *Batcher) Close() {
 func (b *Batcher) run() {
 	defer b.wg.Done()
 	defer close(b.errors)
+	defer close(b.stored)
 
 	ticker := time.NewTicker(b.flushInterval)
 	defer ticker.Stop()
@@ -128,6 +137,11 @@ func (b *Batcher) run() {
 			}
 
 			return
+		}
+
+		select {
+		case b.stored <- len(entries):
+		case <-b.ctx.Done():
 		}
 
 		batch = batch[:0]

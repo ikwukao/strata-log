@@ -78,7 +78,13 @@ func main() {
 		4,
 		1000,
 		func(ctx context.Context, entry ingest.LogEntry) error {
-			return b.Submit(entry)
+			if err := b.Submit(entry); err != nil {
+				metrics.IncErrors()
+				return err
+			}
+
+			metrics.IncIngested()
+			return nil
 		},
 	)
 	if err != nil {
@@ -102,6 +108,15 @@ func main() {
 				"batch storage failed",
 				"error", err,
 			)
+		}
+	}()
+
+	// Monitor successfully persisted batches.
+	go func() {
+		for count := range b.Stored() {
+			for range count {
+				metrics.IncStored()
+			}
 		}
 	}()
 

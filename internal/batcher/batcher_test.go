@@ -173,3 +173,47 @@ func TestBatcherReportsStorageErrors(t *testing.T) {
 		t.Fatal("timed out waiting for storage error")
 	}
 }
+
+func TestBatcherReportsStoredEntries(t *testing.T) {
+	writer := storage.NewMemoryWriter()
+
+	ctx := context.Background()
+
+	b, err := New(
+		ctx,
+		writer,
+		2,
+		time.Hour,
+		10,
+	)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	if err := b.Submit(ingest.LogEntry{
+		Message: "first",
+	}); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+
+	if err := b.Submit(ingest.LogEntry{
+		Message: "second",
+	}); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+
+	select {
+	case count := <-b.Stored():
+		if count != 2 {
+			t.Fatalf(
+				"expected 2 stored entries, got %d",
+				count,
+			)
+		}
+
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for stored notification")
+	}
+
+	b.Close()
+}
