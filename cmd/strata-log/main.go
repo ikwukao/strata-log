@@ -16,12 +16,14 @@ import (
 	"github.com/ikwukao/strata-log/internal/pipeline"
 	"github.com/ikwukao/strata-log/internal/query"
 	"github.com/ikwukao/strata-log/internal/storage"
+	"github.com/ikwukao/strata-log/internal/telemetry"
 )
 
 func main() {
 	cfg := config.Load()
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	metrics := telemetry.NewMetrics()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -94,6 +96,8 @@ func main() {
 	// Monitor asynchronous storage failures from the batcher.
 	go func() {
 		for err := range b.Errors() {
+			metrics.IncErrors()
+
 			logger.Error(
 				"batch storage failed",
 				"error", err,
@@ -107,6 +111,14 @@ func main() {
 	mux.HandleFunc(
 		"/healthz",
 		ingest.HealthHandler,
+	)
+
+	// Metrics endpoint for Prometheus-compatible monitoring.
+	mux.HandleFunc(
+		"/metrics",
+		func(w http.ResponseWriter, r *http.Request) {
+			metrics.ServeHTTP(w, r)
+		},
 	)
 
 	// POST /v1/logs -> asynchronous log ingestion.
