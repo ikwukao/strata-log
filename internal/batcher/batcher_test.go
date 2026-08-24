@@ -154,8 +154,8 @@ func TestBatcherReportsStorageErrors(t *testing.T) {
 		1,
 		time.Hour,
 		10,
-		3,
-		time.Millisecond,
+		1,
+		0,
 	)
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
