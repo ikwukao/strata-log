@@ -13,6 +13,7 @@ type Config struct {
 	Storage  StorageConfig
 	Buffer   BufferConfig
 	Batcher  BatcherConfig
+	Pipeline PipelineConfig
 	Shutdown ShutdownConfig
 }
 
@@ -49,6 +50,11 @@ type BatcherConfig struct {
 	FlushPeriod time.Duration
 }
 
+// PipelineConfig controls asynchronous log processing.
+type PipelineConfig struct {
+	Workers int
+}
+
 // ShutdownConfig controls graceful server shutdown.
 type ShutdownConfig struct {
 	Timeout time.Duration
@@ -59,31 +65,71 @@ type ShutdownConfig struct {
 func Load() Config {
 	return Config{
 		Server: ServerConfig{
-			Host:            getEnv("STRATA_LOG_HOST", "0.0.0.0"),
-			Port:            getEnvInt("STRATA_LOG_PORT", 9090),
-			ReadTimeout:     getEnvDuration("STRATA_LOG_READ_TIMEOUT", 10*time.Second),
-			WriteTimeout:    getEnvDuration("STRATA_LOG_WRITE_TIMEOUT", 10*time.Second),
-			IdleTimeout:     getEnvDuration("STRATA_LOG_IDLE_TIMEOUT", 60*time.Second),
-			ShutdownTimeout: getEnvDuration("STRATA_LOG_SHUTDOWN_TIMEOUT", 10*time.Second),
+			Host: getEnv("STRATA_LOG_HOST", "0.0.0.0"),
+			Port: getEnvInt("STRATA_LOG_PORT", 9090),
+			ReadTimeout: getEnvDuration(
+				"STRATA_LOG_READ_TIMEOUT",
+				10*time.Second,
+			),
+			WriteTimeout: getEnvDuration(
+				"STRATA_LOG_WRITE_TIMEOUT",
+				10*time.Second,
+			),
+			IdleTimeout: getEnvDuration(
+				"STRATA_LOG_IDLE_TIMEOUT",
+				60*time.Second,
+			),
+			ShutdownTimeout: getEnvDuration(
+				"STRATA_LOG_SHUTDOWN_TIMEOUT",
+				10*time.Second,
+			),
 		},
 
 		Storage: StorageConfig{
-			Path:          getEnv("STRATA_LOG_STORAGE_PATH", "strata-log.db"),
-			RetryAttempts: getEnvInt("STRATA_LOG_STORAGE_RETRY_ATTEMPTS", 3),
-			RetryBackoff:  getEnvDuration("STRATA_LOG_STORAGE_RETRY_BACKOFF", 100*time.Millisecond),
+			Path: getEnv(
+				"STRATA_LOG_STORAGE_PATH",
+				"strata-log.db",
+			),
+			RetryAttempts: getEnvInt(
+				"STRATA_LOG_STORAGE_RETRY_ATTEMPTS",
+				3,
+			),
+			RetryBackoff: getEnvDuration(
+				"STRATA_LOG_STORAGE_RETRY_BACKOFF",
+				100*time.Millisecond,
+			),
 		},
 
 		Buffer: BufferConfig{
-			Capacity: getEnvInt("STRATA_LOG_BUFFER_CAPACITY", 10_000),
+			Capacity: getEnvInt(
+				"STRATA_LOG_BUFFER_CAPACITY",
+				10_000,
+			),
 		},
 
 		Batcher: BatcherConfig{
-			MaxSize:     getEnvInt("STRATA_LOG_BATCH_SIZE", 100),
-			FlushPeriod: getEnvDuration("STRATA_LOG_FLUSH_PERIOD", 500*time.Millisecond),
+			MaxSize: getEnvInt(
+				"STRATA_LOG_BATCH_SIZE",
+				100,
+			),
+			FlushPeriod: getEnvDuration(
+				"STRATA_LOG_FLUSH_PERIOD",
+				500*time.Millisecond,
+			),
+		},
+
+		Pipeline: PipelineConfig{
+			Workers: getEnvInt(
+				"STRATA_LOG_PIPELINE_WORKERS",
+				4,
+			),
 		},
 
 		Shutdown: ShutdownConfig{
-			Timeout: getEnvDuration("STRATA_LOG_SHUTDOWN_TIMEOUT", 10*time.Second),
+			Timeout: getEnvDuration(
+				"STRATA_LOG_SHUTDOWN_TIMEOUT",
+				10*time.Second,
+			),
 		},
 	}
 }

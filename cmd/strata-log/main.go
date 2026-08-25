@@ -76,8 +76,8 @@ func main() {
 	// Initialize the asynchronous log processor.
 	processor, err := pipeline.NewLogProcessor(
 		ctx,
-		4,
-		1000,
+		cfg.Pipeline.Workers,
+		cfg.Buffer.Capacity,
 		func(ctx context.Context, entry ingest.LogEntry) error {
 			if err := b.Submit(entry); err != nil {
 				metrics.IncErrors()
