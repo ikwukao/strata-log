@@ -1,10 +1,9 @@
-// Package ingest provides HTTP ingestion handlers and data models
-// for receiving structured log entries.
 package ingest
 
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 )
 
@@ -13,6 +12,15 @@ const maxRequestBodySize = 1 << 20
 
 // HealthHandler reports the health of the Strata-Log HTTP service.
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(
+			w,
+			"method not allowed",
+			http.StatusMethodNotAllowed,
+		)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
@@ -24,7 +32,11 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 func ProcessHandler(processor Processor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			http.Error(
+				w,
+				"method not allowed",
+				http.StatusMethodNotAllowed,
+			)
 			return
 		}
 
@@ -37,7 +49,11 @@ func ProcessHandler(processor Processor) http.HandlerFunc {
 			return
 		}
 
-		r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
+		r.Body = http.MaxBytesReader(
+			w,
+			r.Body,
+			maxRequestBodySize,
+		)
 		defer r.Body.Close()
 
 		var entry LogEntry
@@ -46,12 +62,32 @@ func ProcessHandler(processor Processor) http.HandlerFunc {
 		decoder.DisallowUnknownFields()
 
 		if err := decoder.Decode(&entry); err != nil {
-			http.Error(w, "invalid request body", http.StatusBadRequest)
+			http.Error(
+				w,
+				"invalid request body",
+				http.StatusBadRequest,
+			)
+			return
+		}
+
+		// Reject trailing JSON values or non-whitespace data.
+		var extra any
+
+		if err := decoder.Decode(&extra); err != io.EOF {
+			http.Error(
+				w,
+				"invalid request body",
+				http.StatusBadRequest,
+			)
 			return
 		}
 
 		if err := entry.Validate(); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			http.Error(
+				w,
+				err.Error(),
+				http.StatusBadRequest,
+			)
 			return
 		}
 
@@ -82,11 +118,16 @@ func ProcessHandler(processor Processor) http.HandlerFunc {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(
+			"Content-Type",
+			"application/json",
+		)
 		w.WriteHeader(http.StatusAccepted)
 
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"status": "accepted",
-		})
+		_ = json.NewEncoder(w).Encode(
+			map[string]string{
+				"status": "accepted",
+			},
+		)
 	}
 }
