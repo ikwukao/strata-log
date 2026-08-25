@@ -145,7 +145,10 @@ func TestPipelineProcessesConcurrently(t *testing.T) {
 	p.Close()
 
 	if got := maxActive.Load(); got < 2 {
-		t.Fatalf("expected concurrent processing, max concurrency was %d", got)
+		t.Fatalf(
+			"expected concurrent processing, max concurrency was %d",
+			got,
+		)
 	}
 }
 
@@ -181,6 +184,83 @@ func TestPipelineReportsHandlerErrors(t *testing.T) {
 	}
 
 	p.Close()
+}
+
+func TestPipelineDoesNotBlockWhenErrorBufferIsFull(t *testing.T) {
+	ctx := context.Background()
+
+	var processed atomic.Int32
+
+	p, err := New(
+		ctx,
+		2,
+		2,
+		func(context.Context, int) error {
+			processed.Add(1)
+			return errors.New("processing failed")
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to create pipeline: %v", err)
+	}
+
+	for i := 0; i < 10; i++ {
+		if err := p.Submit(i); err != nil {
+			t.Fatalf("submit failed: %v", err)
+		}
+	}
+
+	done := make(chan struct{})
+
+	go func() {
+		p.Close()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("pipeline Close blocked with a full error channel")
+	}
+
+	if got := processed.Load(); got != 10 {
+		t.Fatalf(
+			"expected all 10 items to be processed, got %d",
+			got,
+		)
+	}
+}
+
+func TestPipelineClosesErrorsAfterWorkersExit(t *testing.T) {
+	ctx := context.Background()
+
+	p, err := New(
+		ctx,
+		2,
+		10,
+		func(context.Context, int) error {
+			return errors.New("processing failed")
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to create pipeline: %v", err)
+	}
+
+	for i := 0; i < 4; i++ {
+		if err := p.Submit(i); err != nil {
+			t.Fatalf("submit failed: %v", err)
+		}
+	}
+
+	p.Close()
+
+	for range p.Errors() {
+	}
+
+	_, ok := <-p.Errors()
+	if ok {
+		t.Fatal("expected errors channel to be closed")
+	}
 }
 
 func TestPipelineRejectsSubmitAfterClose(t *testing.T) {
@@ -252,4 +332,48 @@ func TestPipelineCloseIsIdempotent(t *testing.T) {
 
 	p.Close()
 	p.Close()
+}
+
+func TestPipelineWaitReturnsAfterWorkersExit(t *testing.T) {
+	ctx := context.Background()
+
+	var processed atomic.Int32
+
+	p, err := New(
+		ctx,
+		2,
+		10,
+		func(context.Context, int) error {
+			processed.Add(1)
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("failed to create pipeline: %v", err)
+	}
+
+	for i := 0; i < 10; i++ {
+		if err := p.Submit(i); err != nil {
+			t.Fatalf("submit failed: %v", err)
+		}
+	}
+
+	closeDone := make(chan struct{})
+
+	go func() {
+		p.Close()
+		close(closeDone)
+	}()
+
+	select {
+	case <-closeDone:
+	case <-time.After(time.Second):
+		t.Fatal("pipeline did not close within timeout")
+	}
+
+	p.Wait()
+
+	if got := processed.Load(); got != 10 {
+		t.Fatalf("expected 10 processed items, got %d", got)
+	}
 }

@@ -88,12 +88,20 @@ func (p *Pipeline[T]) worker() {
 
 	for item := range p.input {
 		if err := p.handler(p.ctx, item); err != nil {
-			select {
-			case p.errors <- err:
-			case <-p.ctx.Done():
-				return
-			}
+			p.reportError(err)
 		}
+	}
+}
+
+// reportError publishes a handler error without blocking the worker.
+//
+// Errors are best-effort telemetry. A full error channel must never
+// prevent a worker from finishing and must never deadlock pipeline
+// shutdown.
+func (p *Pipeline[T]) reportError(err error) {
+	select {
+	case p.errors <- err:
+	default:
 	}
 }
 
@@ -119,6 +127,9 @@ func (p *Pipeline[T]) Submit(item T) error {
 }
 
 // Errors returns a channel containing errors produced by item handlers.
+//
+// Errors are delivered on a best-effort basis. If the channel is full,
+// additional errors are dropped so that worker processing cannot block.
 func (p *Pipeline[T]) Errors() <-chan error {
 	return p.errors
 }
@@ -139,17 +150,18 @@ func (p *Pipeline[T]) Close() {
 	p.closed = true
 	p.mu.Unlock()
 
-	// Stop accepting new work, but allow workers to
-	// drain everything already queued in input.
+	// Stop accepting new work, but allow workers to drain everything
+	// already queued in the input channel.
 	close(p.input)
 
-	// Wait until all queued work has been processed.
+	// Workers never block while reporting errors, so shutdown can
+	// safely wait for every worker to finish.
 	p.wg.Wait()
 
-	// Cancel the shared context only after the queue
-	// has been completely drained.
+	// Cancel the shared context after all accepted work has drained.
 	p.cancel()
 
+	// No worker can write to errors after the WaitGroup completes.
 	close(p.errors)
 }
 
