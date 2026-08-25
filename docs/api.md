@@ -27,13 +27,13 @@ The server address can be changed through environment variables. See [configurat
 
 ## Health Check
 
-### Request
+### Health check request
 
 ```bash
 curl http://localhost:9090/healthz
 ```
 
-### Response
+### Health check response
 
 ```json
 {
@@ -51,7 +51,7 @@ A successful health check returns HTTP `200`.
 
 Accepts a single log entry and submits it to the asynchronous processing pipeline.
 
-### Request
+### Ingestion request
 
 ```bash
 curl -X POST http://localhost:9090/v1/logs \
@@ -77,7 +77,7 @@ curl -X POST http://localhost:9090/v1/logs \
 | `message`   | string | Yes      | Log message                    |
 | `fields`    | object | No       | Additional structured metadata |
 
-### Example response
+### Ingestion response
 
 ```json
 {
@@ -131,7 +131,7 @@ curl 'http://localhost:9090/v1/logs?service=api'
 curl 'http://localhost:9090/v1/logs?level=error&service=api&limit=50'
 ```
 
-### Response
+### Query response
 
 ```json
 {
@@ -165,7 +165,7 @@ Exposes application metrics using the Prometheus text exposition format.
 curl http://localhost:9090/metrics
 ```
 
-### Example
+### Metrics example
 
 ```text
 # HELP strata_log_ingested_total Total accepted log entries.
@@ -206,7 +206,7 @@ strata_log_errors_total 0
 
 Errors are returned as plain-text HTTP error responses.
 
-### Example
+### Error response example
 
 ```text
 timestamp is required
