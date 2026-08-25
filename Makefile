@@ -1,44 +1,111 @@
+.PHONY: help fmt test test-race vet build run benchmark check \
+	docker-build up down restart logs health metrics \
+	clean
+
+# -----------------------------------------------------------------------------
+# Configuration
+# -----------------------------------------------------------------------------
+
 APP_NAME := strata-log
-CMD := ./cmd/strata-log
 BINARY := bin/$(APP_NAME)
+CMD := ./cmd/strata-log
+COMPOSE := docker compose -f deployments/docker-compose.yml
+PORT := 9090
 
-.PHONY: all build run test race vet fmt check benchmark clean \
-	docker-build docker-up docker-down
+# -----------------------------------------------------------------------------
+# Help
+# -----------------------------------------------------------------------------
 
-all: check
+help:
+	@echo "Strata-Log development commands:"
+	@echo ""
+	@echo "  make fmt           Format Go source files"
+	@echo "  make test          Run all tests"
+	@echo "  make test-race     Run tests with race detection"
+	@echo "  make vet           Run go vet"
+	@echo "  make build         Build the Strata-Log binary"
+	@echo "  make run           Run Strata-Log locally"
+	@echo "  make benchmark     Run project benchmarks"
+	@echo "  make check         Run formatting, tests, race tests, vet, and build"
+	@echo ""
+	@echo "  make docker-build  Build the Docker image"
+	@echo "  make up            Start the Docker Compose stack"
+	@echo "  make down          Stop the Docker Compose stack"
+	@echo "  make restart       Restart the Docker Compose stack"
+	@echo "  make logs          Follow Strata-Log container logs"
+	@echo ""
+	@echo "  make health        Check the service health endpoint"
+	@echo "  make metrics       Display Prometheus metrics"
+	@echo ""
+	@echo "  make clean         Remove local build artifacts"
 
-build:
-	@mkdir -p bin
-	go build -o $(BINARY) $(CMD)
+# -----------------------------------------------------------------------------
+# Development
+# -----------------------------------------------------------------------------
 
-run:
-	go run $(CMD)
+fmt:
+	gofmt -w $$(find . -name '*.go' -not -path './vendor/*')
 
 test:
 	go test ./...
 
-race:
+test-race:
 	go test -race ./...
 
 vet:
 	go vet ./...
 
-fmt:
-	gofmt -w $$(find . -name '*.go' -not -path './vendor/*')
+build:
+	@mkdir -p bin
+	CGO_ENABLED=0 go build \
+		-trimpath \
+		-ldflags="-s -w" \
+		-o $(BINARY) \
+		$(CMD)
 
-check: fmt test race vet
+run:
+	go run $(CMD)
 
 benchmark:
 	go test -bench=. -benchmem ./benchmarks/...
 
+check: fmt test test-race vet build
+
+# -----------------------------------------------------------------------------
+# Docker
+# -----------------------------------------------------------------------------
+
 docker-build:
-	docker build -f deployments/Dockerfile -t $(APP_NAME):latest .
+	$(COMPOSE) build
 
-docker-up:
-	docker compose -f deployments/docker-compose.yml up --build
+up:
+	$(COMPOSE) up -d
 
-docker-down:
-	docker compose -f deployments/docker-compose.yml down
+down:
+	$(COMPOSE) down
+
+restart:
+	$(COMPOSE) down
+	$(COMPOSE) up -d
+
+logs:
+	$(COMPOSE) logs -f strata-log
+
+# -----------------------------------------------------------------------------
+# Operations
+# -----------------------------------------------------------------------------
+
+health:
+	curl -fsS http://localhost:$(PORT)/healthz
+	@echo
+
+metrics:
+	curl -fsS http://localhost:$(PORT)/metrics
+
+# -----------------------------------------------------------------------------
+# Cleanup
+# -----------------------------------------------------------------------------
 
 clean:
 	rm -rf bin
+	rm -f coverage.out
