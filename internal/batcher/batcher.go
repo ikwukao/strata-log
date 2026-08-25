@@ -1,3 +1,4 @@
+// Package batcher provides buffered batching and persistence for log entries.
 package batcher
 
 import (
@@ -35,7 +36,8 @@ type Batcher struct {
 
 	wg sync.WaitGroup
 
-	closeOnce sync.Once
+	mu     sync.RWMutex
+	closed bool
 }
 
 // New creates and starts a Batcher.
@@ -94,6 +96,9 @@ func New(
 }
 
 // Errors returns a channel containing asynchronous storage errors.
+//
+// Errors are delivered on a best-effort basis. A full error channel
+// never blocks the batcher from continuing or shutting down.
 func (b *Batcher) Errors() <-chan error {
 	return b.errors
 }
@@ -105,7 +110,17 @@ func (b *Batcher) Stored() <-chan int {
 }
 
 // Submit adds a log entry to the batcher.
+//
+// Submit is safe to call concurrently with Close. Once Close begins,
+// new submissions are rejected with ErrClosed.
 func (b *Batcher) Submit(entry ingest.LogEntry) error {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	if b.closed {
+		return ErrClosed
+	}
+
 	select {
 	case <-b.ctx.Done():
 		return ErrClosed
@@ -115,19 +130,31 @@ func (b *Batcher) Submit(entry ingest.LogEntry) error {
 	}
 }
 
-// Close stops accepting new entries and waits for the batcher to stop.
+// Close stops accepting new entries, drains all accepted entries,
+// waits for the batcher to stop, and releases its resources.
 //
-// Cancellation is triggered first so any in-flight retry operation can
-// terminate promptly. The input channel is then closed so no new entries
-// can be submitted.
+// Close is safe to call multiple times.
 func (b *Batcher) Close() {
-	b.closeOnce.Do(func() {
-		close(b.input)
-		b.wg.Wait()
-		b.cancel()
-	})
+	b.mu.Lock()
+
+	if b.closed {
+		b.mu.Unlock()
+		return
+	}
+
+	b.closed = true
+	close(b.input)
+
+	b.mu.Unlock()
+
+	// The run loop drains the input channel and flushes the final batch
+	// before returning.
+	b.wg.Wait()
+
+	b.cancel()
 }
 
+// run owns the input channel and performs all batching and persistence.
 func (b *Batcher) run() {
 	defer b.wg.Done()
 	defer close(b.errors)
@@ -156,24 +183,18 @@ func (b *Batcher) run() {
 		)
 
 		if err != nil {
-			// A canceled context means shutdown was requested. Do not
-			// report cancellation as a storage failure.
+			// Shutdown-related cancellation is not a storage failure.
 			if !errors.Is(err, context.Canceled) &&
 				!errors.Is(err, context.DeadlineExceeded) {
-				select {
-				case b.errors <- err:
-				case <-b.ctx.Done():
-				}
+				b.reportError(err)
 			}
 
 			return false
 		}
 
-		select {
-		case b.stored <- len(entries):
-		case <-b.ctx.Done():
-			return false
-		}
+		// A successful write should always be reported when possible.
+		// Never allow the notification channel to block persistence.
+		b.reportStored(len(entries))
 
 		batch = batch[:0]
 
@@ -184,6 +205,7 @@ func (b *Batcher) run() {
 		select {
 		case entry, ok := <-b.input:
 			if !ok {
+				// Close drains all entries already accepted by Submit.
 				flush()
 				return
 			}
@@ -204,5 +226,21 @@ func (b *Batcher) run() {
 		case <-b.ctx.Done():
 			return
 		}
+	}
+}
+
+// reportError publishes a storage error without blocking the batcher.
+func (b *Batcher) reportError(err error) {
+	select {
+	case b.errors <- err:
+	default:
+	}
+}
+
+// reportStored publishes a successful batch notification without blocking.
+func (b *Batcher) reportStored(count int) {
+	select {
+	case b.stored <- count:
+	default:
 	}
 }

@@ -26,6 +26,10 @@ func Retry(
 		return errors.New("retry attempts must be greater than zero")
 	}
 
+	if backoff < 0 {
+		return errors.New("retry backoff must not be negative")
+	}
+
 	var err error
 	delay := backoff
 
@@ -52,7 +56,10 @@ func Retry(
 		select {
 		case <-ctx.Done():
 			if !timer.Stop() {
-				<-timer.C
+				select {
+				case <-timer.C:
+				default:
+				}
 			}
 
 			return ctx.Err()
@@ -60,7 +67,12 @@ func Retry(
 		case <-timer.C:
 		}
 
-		delay *= 2
+		// Prevent duration overflow from turning the retry delay negative.
+		if delay > time.Duration(1<<62) {
+			delay = time.Duration(1 << 62)
+		} else {
+			delay *= 2
+		}
 	}
 
 	return err
