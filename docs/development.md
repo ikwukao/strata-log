@@ -8,7 +8,7 @@ This document describes the development workflow for contributing to Strata-Log.
 
 Install:
 
-* Go
+* Go 1.26+
 * Git
 * Docker
 * Docker Compose
@@ -23,6 +23,12 @@ Verify Docker:
 
 ```bash
 docker version
+```
+
+Verify Docker Compose:
+
+```bash
+docker compose version
 ```
 
 ---
@@ -41,12 +47,15 @@ cd strata-log
 ```text
 strata-log/
 ├── benchmarks/
+│   ├── ingest_test.go
+│   └── storage_test.go
 ├── cmd/
 │   └── strata-log/
 ├── deployments/
 ├── docs/
 ├── internal/
 │   ├── batcher/
+│   ├── buffer/
 │   ├── config/
 │   ├── ingest/
 │   ├── pipeline/
@@ -69,40 +78,61 @@ strata-log/
 
 ## Development Principles
 
-Strata-Log follows these principles:
+Strata-Log follows a few simple principles:
 
-* Keep packages small.
-* Prefer clear interfaces.
+* Keep packages focused.
+* Prefer small, clear interfaces.
 * Keep dependencies minimal.
 * Use context-aware operations.
-* Avoid unnecessary global state.
-* Test concurrent code with the race detector.
-* Document exported APIs.
 * Handle errors explicitly.
+* Avoid unnecessary global state.
+* Document exported APIs.
+* Test concurrent behavior.
 * Preserve graceful shutdown behavior.
+* Prefer measurable improvements over speculative optimization.
 
 ---
 
 ## Run the Application
 
+Run directly:
+
 ```bash
 go run ./cmd/strata-log
 ```
 
-The default server is available at:
+Or use:
+
+```bash
+make run
+```
+
+The default server listens on:
 
 ```text
 http://localhost:9090
 ```
 
+Health check:
+
+```bash
+curl http://localhost:9090/healthz
+```
+
 ---
 
-## Run Tests
+## Testing
 
 Run all tests:
 
 ```bash
 go test ./...
+```
+
+Or:
+
+```bash
+make test
 ```
 
 Run a specific package:
@@ -121,15 +151,21 @@ go test ./internal/batcher -run TestBatcherFlushesOnClose
 
 ## Race Detection
 
-Concurrency is an important part of Strata-Log.
+Concurrency is a core part of Strata-Log.
 
-Always run:
+Run:
 
 ```bash
 go test -race ./...
 ```
 
-before considering a change complete.
+Or:
+
+```bash
+make race
+```
+
+Concurrent changes should pass the race detector before they are considered complete.
 
 ---
 
@@ -141,68 +177,112 @@ Run:
 go vet ./...
 ```
 
+Or:
+
+```bash
+make vet
+```
+
 ---
 
 ## Formatting
 
-Format changed Go files:
-
-```bash
-gofmt -w path/to/file.go
-```
-
-Or format the entire project:
+Format the entire project:
 
 ```bash
 gofmt -w .
+```
+
+Or:
+
+```bash
+make fmt
+```
+
+For a smaller change, format only the modified files:
+
+```bash
+gofmt -w path/to/file.go
 ```
 
 ---
 
 ## Makefile
 
-Use the project's Makefile for common workflows.
+The Makefile provides common development commands.
 
-Inspect available targets:
+Run the complete validation pipeline:
 
 ```bash
-make help
+make check
 ```
 
-Use the available targets for:
+Available targets include:
 
-* building
-* testing
-* race testing
-* linting
-* running
-* container workflows
+```text
+all
+build
+run
+test
+race
+vet
+fmt
+check
+benchmark
+docker-build
+docker-up
+docker-down
+clean
+```
+
+Examples:
+
+```bash
+make build
+make run
+make test
+make race
+make vet
+make benchmark
+```
 
 ---
 
-## Adding a New Feature
+## Development Workflow
 
-A typical feature workflow is:
+A typical change should follow:
 
 ```text
-Understand requirement
-        ↓
-Identify package boundary
-        ↓
-Write tests
-        ↓
-Implement feature
-        ↓
+Understand the requirement
+          │
+          ▼
+Identify the affected package
+          │
+          ▼
+Write or update tests
+          │
+          ▼
+Implement the change
+          │
+          ▼
 Run package tests
-        ↓
-Run full test suite
-        ↓
-Run race detector
-        ↓
+          │
+          ▼
+Run the full test suite
+          │
+          ▼
+Run the race detector
+          │
+          ▼
 Run go vet
-        ↓
+          │
+          ▼
 Update documentation
-        ↓
+          │
+          ▼
+Review the diff
+          │
+          ▼
 Commit
 ```
 
@@ -210,11 +290,11 @@ Commit
 
 ## Testing Strategy
 
-Strata-Log uses several levels of testing.
+Strata-Log uses multiple levels of testing.
 
 ### Unit Tests
 
-Unit tests live alongside the package they test.
+Unit tests live alongside the implementation they verify.
 
 Example:
 
@@ -226,21 +306,35 @@ internal/batcher/
 
 ### Integration Tests
 
-Integration tests verify interactions between components such as:
+Integration tests verify interactions between major components.
+
+The current integration path covers:
 
 ```text
 HTTP
- ↓
-Pipeline
- ↓
+ │
+ ▼
+Ingestion Pipeline
+ │
+ ▼
 Batcher
- ↓
-Storage
+ │
+ ▼
+SQLite
+ │
+ ▼
+Query Service
+```
+
+Integration tests are located in:
+
+```text
+tests/
 ```
 
 ### Race Tests
 
-Concurrent components must be tested using:
+Concurrent components should be tested with:
 
 ```bash
 go test -race ./...
@@ -253,30 +347,42 @@ go test -race ./...
 Tests should:
 
 * be deterministic
-* avoid unnecessary sleeps
-* use contexts with cancellation
 * clean up resources
-* test both success and failure paths
-* verify concurrent behavior where applicable
+* avoid unnecessary sleeps
+* use channels or synchronization where possible
+* use context cancellation when appropriate
+* cover success and failure paths
+* verify concurrent behavior where relevant
 
-Prefer synchronization primitives and channels over arbitrary timing assumptions.
+Prefer synchronization primitives over arbitrary timing assumptions.
 
 ---
 
 ## Storage Development
 
-SQLite storage is implemented behind storage interfaces.
+Storage implementations are defined behind storage interfaces.
 
-This allows components to depend on abstractions instead of a concrete database implementation.
+The current persistent backend is SQLite.
 
-When modifying storage:
+Storage tests are located in:
+
+```text
+internal/storage/
+```
+
+Run storage tests:
 
 ```bash
 go test ./internal/storage
+```
+
+Run them with the race detector:
+
+```bash
 go test -race ./internal/storage
 ```
 
-Then run:
+After storage changes, run:
 
 ```bash
 go test ./...
@@ -286,12 +392,14 @@ go test ./...
 
 ## Resilience Development
 
-Changes to retry behavior should test:
+The resilience package contains retry behavior used by the persistence path.
+
+Changes to retry behavior should cover:
 
 * immediate success
 * retry after failure
 * maximum attempts
-* backoff behavior
+* exponential backoff
 * context cancellation
 * invalid configuration
 
@@ -306,18 +414,18 @@ go test -race ./internal/resilience
 
 ## Batcher Development
 
-The batcher is sensitive to concurrency and shutdown behavior.
+The batcher collects log entries and writes them in batches.
 
 Changes should verify:
 
 * entries are accepted
 * batches flush at the configured size
-* batches flush on the timer
+* batches flush on the configured interval
 * pending entries flush during shutdown
 * storage failures are reported
-* retries terminate correctly
+* retry behavior works correctly
 * channels close correctly
-* concurrent access is race-free
+* concurrent behavior is race-free
 
 Run:
 
@@ -328,21 +436,50 @@ go test -race ./internal/batcher
 
 ---
 
+## Pipeline Development
+
+The pipeline processes log entries asynchronously using worker goroutines.
+
+When changing pipeline behavior, verify:
+
+* workers process submitted entries
+* concurrent processing remains safe
+* handler errors are reported
+* closed pipelines reject new work
+* context cancellation is respected
+* shutdown does not deadlock
+* worker goroutines exit correctly
+
+Run:
+
+```bash
+go test ./internal/pipeline
+go test -race ./internal/pipeline
+```
+
+---
+
 ## API Development
 
 When changing the HTTP API:
 
-1. Update the handler.
+1. Update the appropriate handler.
 2. Add or update tests.
 3. Update `docs/api.md`.
-4. Update `README.md` if user-facing behavior changes.
-5. Update `CHANGELOG.md`.
+4. Update `README.md` when user-facing behavior changes.
+5. Update `CHANGELOG.md` when appropriate.
 
 Verify manually:
 
 ```bash
 curl http://localhost:9090/healthz
+```
+
+```bash
 curl http://localhost:9090/v1/logs
+```
+
+```bash
 curl http://localhost:9090/metrics
 ```
 
@@ -352,12 +489,12 @@ curl http://localhost:9090/metrics
 
 Configuration changes should include:
 
-* a default value
+* a sensible default
 * environment variable support
 * configuration tests
 * documentation
 
-Update:
+Relevant files:
 
 ```text
 internal/config/config.go
@@ -365,13 +502,73 @@ internal/config/config_test.go
 docs/configuration.md
 ```
 
+After configuration changes:
+
+```bash
+go test ./internal/config
+go test ./...
+```
+
+---
+
+## Docker Development
+
+Build the container:
+
+```bash
+make docker-build
+```
+
+Start the deployment:
+
+```bash
+make docker-up
+```
+
+Stop the deployment:
+
+```bash
+make docker-down
+```
+
+Or use Docker Compose directly:
+
+```bash
+docker compose -f deployments/docker-compose.yml up --build
+```
+
+---
+
+## Benchmarks
+
+Run the project benchmarks:
+
+```bash
+make benchmark
+```
+
+Or:
+
+```bash
+go test -bench=. -benchmem ./benchmarks/...
+```
+
+Performance changes should be measured rather than assumed.
+
+A useful workflow is:
+
+1. Establish a baseline.
+2. Make one change.
+3. Benchmark again.
+4. Verify correctness.
+5. Run the race detector.
+6. Compare the results.
+
 ---
 
 ## Documentation
 
-Documentation belongs in `docs/`.
-
-Current documentation:
+Documentation is stored in:
 
 ```text
 docs/
@@ -382,34 +579,58 @@ docs/
 └── development.md
 ```
 
-Documentation should be updated alongside behavior changes.
+Update documentation whenever user-facing behavior, configuration, API behavior, or deployment behavior changes.
 
 ---
 
-## Docker Development
+## Security
 
-Build the container:
+Never commit:
+
+* credentials
+* API keys
+* private certificates
+* production databases
+* personal data
+* secret environment files
+
+Before committing, inspect:
 
 ```bash
-docker compose -f deployments/docker-compose.yml build
+git status
+git diff
 ```
 
-Start:
+Make sure no sensitive or unintended files are included.
+
+---
+
+## Dependency Management
+
+Inspect dependencies:
 
 ```bash
-docker compose -f deployments/docker-compose.yml up
+go list -m all
 ```
 
-Build and start:
+Add or update a dependency carefully:
 
 ```bash
-docker compose -f deployments/docker-compose.yml up --build
+go get <module>
 ```
 
-Stop:
+Then clean the module:
 
 ```bash
-docker compose -f deployments/docker-compose.yml down
+go mod tidy
+```
+
+Validate the project:
+
+```bash
+go test ./...
+go test -race ./...
+go vet ./...
 ```
 
 ---
@@ -419,10 +640,7 @@ docker compose -f deployments/docker-compose.yml down
 Before committing:
 
 ```bash
-gofmt -w .
-go test ./...
-go test -race ./...
-go vet ./...
+make check
 ```
 
 Then inspect:
@@ -434,17 +652,18 @@ git diff
 
 Confirm:
 
-* no unintended files changed
+* formatting is clean
 * tests pass
 * race detector passes
 * `go vet` passes
+* no unintended files changed
 * documentation is updated when necessary
 
 ---
 
 ## Commit Messages
 
-Use clear, imperative commit messages.
+Use short, imperative commit messages that describe the change.
 
 Examples:
 
@@ -468,135 +687,10 @@ docs: document HTTP API
 refactor: simplify storage query flow
 ```
 
----
+For documentation and deployment polish:
 
-## Pull Requests
-
-A pull request should explain:
-
-1. what changed
-2. why it changed
-3. how it was tested
-4. whether documentation was updated
-
-Example:
-
-```markdown
-## Summary
-
-- Added configurable storage retry behavior
-- Added retry metrics
-- Updated deployment documentation
-
-## Testing
-
-- `go test ./...`
-- `go test -race ./...`
-- `go vet ./...`
-```
-
----
-
-## Debugging
-
-Run the service:
-
-```bash
-go run ./cmd/strata-log
-```
-
-Check health:
-
-```bash
-curl http://localhost:9090/healthz
-```
-
-Check metrics:
-
-```bash
-curl http://localhost:9090/metrics
-```
-
-Check logs:
-
-```bash
-curl http://localhost:9090/v1/logs
-```
-
-For database-related issues, inspect the configured SQLite database.
-
----
-
-## Performance Work
-
-Performance changes should be measured rather than assumed.
-
-Use:
-
-```bash
-go test -bench=. ./...
-```
-
-For focused benchmarks:
-
-```bash
-go test -bench=. ./benchmarks/...
-```
-
-When optimizing:
-
-1. Establish a baseline.
-2. Make one change.
-3. Benchmark again.
-4. Verify correctness.
-5. Run the race detector.
-6. Document meaningful improvements.
-
----
-
-## Security
-
-Do not commit:
-
-* credentials
-* API keys
-* private certificates
-* production databases
-* personal data
-* environment files containing secrets
-
-Before submitting changes:
-
-```bash
-git status
-git diff
-```
-
-Verify that sensitive files are not staged.
-
----
-
-## Dependency Management
-
-Inspect dependencies:
-
-```bash
-go list -m all
-```
-
-Update dependencies carefully:
-
-```bash
-go get <module>
-go mod tidy
-```
-
-Then run:
-
-```bash
-go test ./...
-go test -race ./...
-go vet ./...
+```text
+docs: polish documentation and deployment guides
 ```
 
 ---
@@ -606,17 +700,29 @@ go vet ./...
 The standard validation sequence is:
 
 ```bash
-gofmt -w .
+make check
+```
+
+This runs:
+
+```text
+gofmt
 go test ./...
 go test -race ./...
 go vet ./...
 ```
 
-For container changes:
+For container-related changes, additionally run:
 
 ```bash
-docker compose -f deployments/docker-compose.yml build
-docker compose -f deployments/docker-compose.yml up
+make docker-build
+make docker-up
 ```
 
-A change is ready when the complete validation pipeline passes.
+Then verify:
+
+```bash
+curl http://localhost:9090/healthz
+```
+
+A change is ready when the relevant validation checks pass and the final Git diff contains only intentional changes.

@@ -2,43 +2,43 @@
 
 A lightweight, fault-tolerant log ingestion and query service written in Go.
 
-Strata-Log accepts structured application logs over HTTP, processes them asynchronously, batches writes, persists data to SQLite, exposes query APIs, and provides Prometheus-compatible metrics.
+Strata-Log accepts structured application logs over HTTP, processes them asynchronously, batches writes, persists them to SQLite, exposes query endpoints, and provides Prometheus-compatible metrics.
 
-It is designed as a practical example of building a reliable Go service with concurrency, batching, persistence, resilience, observability, testing, and containerized deployment.
+The project is designed as a practical Go backend system demonstrating concurrency, asynchronous processing, batching, persistence, retry handling, observability, graceful shutdown, testing, and containerized deployment.
 
 ---
 
 ## Features
 
-- Structured JSON log ingestion
-- Asynchronous log processing
-- Configurable in-memory buffering
-- Batch persistence
-- SQLite persistent storage
-- Atomic batch writes
-- Automatic retry with exponential backoff
-- HTTP query API
-- Prometheus-compatible metrics
-- Health-check endpoint
-- Graceful shutdown
-- Configurable timeouts
-- Docker and Docker Compose deployment
-- Unit, integration, race, and static analysis tests
-- Benchmark suite
-- Zero-allocation log pipeline benchmark
+* Structured JSON log ingestion
+* Asynchronous log processing
+* Concurrent worker pipeline
+* Bounded in-memory buffering
+* Configurable batch processing
+* SQLite persistent storage
+* Atomic batch writes
+* Retry with exponential backoff
+* HTTP log query API
+* Prometheus-compatible metrics
+* Health-check endpoint
+* Graceful shutdown
+* Configurable runtime settings
+* Docker and Docker Compose support
+* Unit and integration tests
+* Race-detector coverage
+* Static analysis with `go vet`
+* Benchmark suite
 
 ---
 
 ## Architecture
 
 ```text
+                         HTTP Client
+                              │
+                              ▼
                     ┌──────────────────┐
-                    │    HTTP Client   │
-                    └────────┬─────────┘
-                             │
-                             ▼
-                    ┌──────────────────┐
-                    │  HTTP API        │
+                    │    HTTP API      │
                     │                  │
                     │ POST /v1/logs    │
                     │ GET  /v1/logs    │
@@ -48,94 +48,71 @@ It is designed as a practical example of building a reliable Go service with con
                              │
                              ▼
                     ┌──────────────────┐
-                    │ Ingestion        │
-                    │ Pipeline         │
+                    │    Ingestion     │
+                    │    Pipeline      │
                     └────────┬─────────┘
                              │
                              ▼
                     ┌──────────────────┐
-                    │ Buffer /         │
-                    │ Workers          │
+                    │ Workers / Buffer │
                     └────────┬─────────┘
                              │
                              ▼
                     ┌──────────────────┐
-                    │ Batcher          │
+                    │     Batcher      │
                     │                  │
-                    │ Size + Timer     │
+                    │ Size + Interval  │
                     └────────┬─────────┘
                              │
-                    Retry + Exponential
-                         Backoff
+                       Retry + Backoff
                              │
                              ▼
                     ┌──────────────────┐
-                    │ Storage Layer    │
-                    │                  │
-                    │ SQLite           │
+                    │     SQLite       │
+                    │    Storage       │
                     └────────┬─────────┘
                              │
                              ▼
                     ┌──────────────────┐
-                    │ Query Service    │
+                    │  Query Service   │
                     └──────────────────┘
 
                     ┌──────────────────┐
-                    │   Telemetry      │
-                    │   /metrics       │
+                    │    Telemetry     │
+                    │    /metrics      │
                     └──────────────────┘
 ```
 
-See the complete architecture documentation:
-
-- [`docs/architecture.md`](docs/architecture.md)
-
----
-
-## Why Strata-Log?
-
-Traditional application logging can become difficult to manage when applications generate large numbers of events.
-
-Strata-Log explores a simple architecture for moving logging away from application processes while maintaining:
-
-- fast ingestion
-- controlled memory usage
-- durable persistence
-- failure handling
-- observability
-- graceful shutdown
-- operational simplicity
-
-The project is intentionally implemented in Go to demonstrate practical backend engineering concepts including concurrency, channels, worker pipelines, database transactions, HTTP services, and reliability patterns.
+For a deeper explanation of the system design, see [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
 ## Tech Stack
 
-| Technology | Purpose |
-| --- | --- |
-| Go | Application runtime |
-| SQLite | Persistent log storage |
-| `modernc.org/sqlite` | Pure-Go SQLite driver |
-| Docker | Containerization |
-| Docker Compose | Local deployment |
-| Prometheus | Metrics collection |
-| `net/http` | HTTP API |
-| `log/slog` | Structured application logging |
+| Technology           | Purpose                        |
+| -------------------- | ------------------------------ |
+| Go                   | Application runtime            |
+| `net/http`           | HTTP server and API            |
+| SQLite               | Persistent log storage         |
+| `modernc.org/sqlite` | Pure-Go SQLite driver          |
+| Docker               | Containerization               |
+| Docker Compose       | Local container deployment     |
+| Prometheus           | Metrics collection             |
+| `log/slog`           | Structured application logging |
 
 ---
 
 ## Requirements
 
-For local development:
+### Local Development
 
-- Go 1.26+
-- Git
+* Go 1.26+
+* Git
 
-For containerized deployment:
+### Containerized Development
 
-- Docker
-- Docker Compose
+* Docker
+* Docker Compose
 
 ---
 
@@ -154,13 +131,9 @@ Run the service:
 go run ./cmd/strata-log
 ```
 
-By default, Strata-Log listens on:
+Strata-Log listens on port `9090` by default.
 
-```text
-http://localhost:9090
-```
-
-Health check:
+### Health Check
 
 ```bash
 curl http://localhost:9090/healthz
@@ -169,20 +142,16 @@ curl http://localhost:9090/healthz
 Expected response:
 
 ```json
-{"status":"ok"}
+{
+  "status": "ok"
+}
 ```
 
 ---
 
 ## Ingest a Log
 
-Strata-Log accepts structured JSON log entries through:
-
-```text
-POST /v1/logs
-```
-
-Example:
+Send a structured log entry:
 
 ```bash
 curl -X POST http://localhost:9090/v1/logs \
@@ -222,7 +191,7 @@ Filter by service:
 curl 'http://localhost:9090/v1/logs?service=api'
 ```
 
-Limit the number of results:
+Limit results:
 
 ```bash
 curl 'http://localhost:9090/v1/logs?limit=20'
@@ -254,27 +223,25 @@ Example response:
 }
 ```
 
-See the complete API reference:
-
-- [`docs/api.md`](docs/api.md)
+See the complete API reference in [`docs/api.md`](docs/api.md).
 
 ---
 
 ## Metrics
 
-Strata-Log exposes Prometheus-compatible metrics at:
+Prometheus-compatible metrics are exposed at:
 
 ```text
 GET /metrics
 ```
 
-Example:
+View the metrics:
 
 ```bash
 curl http://localhost:9090/metrics
 ```
 
-Available counters include:
+The service exposes counters including:
 
 ```text
 strata_log_ingested_total
@@ -282,48 +249,59 @@ strata_log_stored_total
 strata_log_errors_total
 ```
 
-These counters provide basic visibility into ingestion, persistence, and processing failures.
-
 ---
 
 ## Configuration
 
 Strata-Log is configured through environment variables.
 
-Important configuration values include:
+Common settings include:
 
 ```text
 STRATA_LOG_HOST
 STRATA_LOG_PORT
 STRATA_LOG_STORAGE_PATH
+STRATA_LOG_RETRY_ATTEMPTS
+STRATA_LOG_RETRY_BACKOFF
 STRATA_LOG_BUFFER_CAPACITY
 STRATA_LOG_BATCH_SIZE
 STRATA_LOG_FLUSH_PERIOD
+STRATA_LOG_READ_TIMEOUT
+STRATA_LOG_WRITE_TIMEOUT
+STRATA_LOG_IDLE_TIMEOUT
 STRATA_LOG_SHUTDOWN_TIMEOUT
-STRATA_LOG_RETRY_ATTEMPTS
-STRATA_LOG_RETRY_BACKOFF
 ```
 
 Default server configuration:
 
 ```text
-Host:            0.0.0.0
-Port:            9090
-Read timeout:    10s
-Write timeout:   10s
-Idle timeout:    60s
+Host:             0.0.0.0
+Port:             9090
+Read timeout:     10s
+Write timeout:    10s
+Idle timeout:     60s
 Shutdown timeout: 10s
 ```
 
-See:
-
-- [`docs/configuration.md`](docs/configuration.md)
+See [`docs/configuration.md`](docs/configuration.md) for the complete configuration reference.
 
 ---
 
 ## Docker
 
-Build and start Strata-Log with Docker Compose:
+Build the image:
+
+```bash
+make docker-build
+```
+
+Start Strata-Log:
+
+```bash
+make docker-up
+```
+
+Or use Docker Compose directly:
 
 ```bash
 docker compose -f deployments/docker-compose.yml up --build
@@ -335,21 +313,125 @@ Run in the background:
 docker compose -f deployments/docker-compose.yml up --build -d
 ```
 
-Check the service:
+Stop the deployment:
+
+```bash
+make docker-down
+```
+
+Verify the service:
 
 ```bash
 curl http://localhost:9090/healthz
 ```
 
-Stop the deployment:
+See [`docs/deployment.md`](docs/deployment.md) for deployment instructions.
+
+---
+
+## Makefile
+
+Strata-Log includes a Makefile for common development, testing, build, Docker, and operational workflows.
+
+Display all available commands:
 
 ```bash
-docker compose -f deployments/docker-compose.yml down
+make help
 ```
 
-Deployment documentation:
+### Development
 
-- [`docs/deployment.md`](docs/deployment.md)
+Format Go source files:
+
+```bash
+make fmt
+```
+
+Run tests:
+
+```bash
+make test
+```
+
+Run tests with the race detector:
+
+```bash
+make test-race
+```
+
+Run static analysis:
+
+```bash
+make vet
+```
+
+Build the Strata-Log binary:
+
+```bash
+make build
+```
+
+Run the complete validation and build workflow:
+
+```bash
+make check
+```
+
+### Docker Compose
+
+Build the Docker image:
+
+```bash
+make docker-build
+```
+
+Start the Docker Compose stack:
+
+```bash
+make up
+```
+
+Stop the stack:
+
+```bash
+make down
+```
+
+Restart the stack:
+
+```bash
+make restart
+```
+
+Follow Strata-Log container logs:
+
+```bash
+make logs
+```
+
+### Operations
+
+Check service health:
+
+```bash
+make health
+```
+
+Display Prometheus metrics:
+
+```bash
+make metrics
+```
+
+### Cleanup
+
+Remove local build artifacts:
+
+```bash
+make clean
+```
+
+The Makefile provides a consistent interface for local development and container-based workflows, while the underlying commands remain directly available when needed.
 
 ---
 
@@ -396,26 +478,27 @@ strata-log/
 ├── LICENSE
 ├── Makefile
 ├── ROADMAP.md
-└── README.md
+├── README.md
+├── go.mod
+└── go.sum
 ```
 
 ---
 
 ## Reliability
 
-Strata-Log is designed to avoid losing an entire batch because of a transient storage failure.
+The persistence path is designed around several reliability mechanisms:
 
-The persistence path uses:
+1. Bounded ingestion buffering
+2. Concurrent processing
+3. Batch accumulation
+4. Atomic SQLite batch writes
+5. Configurable retry attempts
+6. Exponential retry backoff
+7. Context-aware cancellation
+8. Graceful shutdown
 
-1. Batch accumulation
-2. Atomic database transactions
-3. Configurable retry attempts
-4. Exponential retry backoff
-5. Context-aware cancellation
-6. Error reporting through the batcher
-7. Graceful shutdown
-
-The retry mechanism stops immediately when its context is canceled.
+Transient storage failures can therefore be retried before being reported through the batcher's error channel.
 
 ---
 
@@ -428,14 +511,20 @@ SIGINT
 SIGTERM
 ```
 
-During shutdown it:
+During shutdown, the service:
 
-1. Stops accepting new HTTP requests.
-2. Shuts down the HTTP server.
-3. Stops the ingestion processor.
+1. Stops the HTTP server.
+2. Stops accepting new processing work.
+3. Drains pending pipeline work.
 4. Flushes pending batches.
 5. Closes the storage backend.
 6. Exits cleanly.
+
+The shutdown timeout is configurable through:
+
+```text
+STRATA_LOG_SHUTDOWN_TIMEOUT
+```
 
 ---
 
@@ -459,104 +548,68 @@ Run static analysis:
 go vet ./...
 ```
 
-Run formatting:
-
-```bash
-gofmt -w .
-```
-
 Run benchmarks:
 
 ```bash
 go test -bench=. -benchmem ./benchmarks/...
 ```
 
----
+Or use:
 
-## Benchmarks
-
-Benchmarks were run locally on:
-
-```text
-OS:   Linux
-Arch: amd64
-CPU:  Intel(R) Core(TM) i5-3427U CPU @ 1.80GHz
+```bash
+make check
 ```
-
-Repeated benchmark runs produced the following ranges:
-
-| Benchmark | Result |
-| --- | ---: |
-| `BenchmarkLogPipeline` | ~1.03–1.22 µs/op |
-| `BenchmarkLogPipeline` allocations | 0 B/op |
-| `BenchmarkLogPipeline` allocations | 0 allocs/op |
-| `BenchmarkSQLiteWriteBatch` | ~10.1–11.9 ms/op |
-| `BenchmarkSQLiteWriteBatch` memory | ~63 KB/op |
-| `BenchmarkSQLiteWriteBatch` allocations | ~2,012 allocs/op |
-
-Example:
-
-```text
-BenchmarkLogPipeline-2          1000000    1139 ns/op       0 B/op       0 allocs/op
-BenchmarkSQLiteWriteBatch-2         122    9379326 ns/op   63070 B/op   2012 allocs/op
-```
-
-These results are **local reference measurements**, not production performance guarantees. Actual performance will depend on hardware, workload, SQLite configuration, batch size, filesystem, and deployment environment.
 
 ---
 
-## Development
+## Development Docs
 
 Development documentation covers:
 
-- local setup
-- project structure
-- development workflow
-- testing
-- formatting
-- benchmarks
+* local setup
+* project structure
+* testing
+* concurrency
+* storage development
+* resilience development
+* batcher development
+* API development
+* Docker workflows
 
-See:
-
-- [`docs/development.md`](docs/development.md)
-
----
-
-## API Documentation
-
-Complete API documentation is available at:
-
-- [`docs/api.md`](docs/api.md)
-
-Primary endpoints:
-
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/healthz` | Health check |
-| `POST` | `/v1/logs` | Ingest log |
-| `GET` | `/v1/logs` | Query logs |
-| `GET` | `/metrics` | Prometheus metrics |
+See [`docs/development.md`](docs/development.md).
 
 ---
 
-## Roadmap
+## API
 
-The current roadmap focuses on evolving Strata-Log toward a more capable distributed logging platform.
+| Method | Endpoint   | Purpose            |
+| ------ | ---------- | ------------------ |
+| `GET`  | `/healthz` | Health check       |
+| `POST` | `/v1/logs` | Ingest a log       |
+| `GET`  | `/v1/logs` | Query logs         |
+| `GET`  | `/metrics` | Prometheus metrics |
 
-Potential future improvements include:
+See [`docs/api.md`](docs/api.md) for the complete API reference.
 
-- richer query filters
-- pagination
-- log retention policies
-- additional storage backends
-- improved metrics
-- authentication and authorization
-- distributed ingestion
-- horizontal scaling
-- improved observability
-- production deployment examples
+---
 
-See [`ROADMAP.md`](ROADMAP.md) for the current roadmap.
+## Project Status
+
+Strata-Log is an MVP demonstrating practical Go backend engineering patterns, including:
+
+* concurrent processing
+* asynchronous ingestion
+* bounded buffering
+* batching
+* persistent storage
+* retry and resilience patterns
+* HTTP API design
+* observability
+* graceful shutdown
+* automated testing
+* containerized deployment
+
+The project is intended for local development, experimentation, learning, and demonstration of backend engineering practices.
 
 ---
 
@@ -564,18 +617,13 @@ See [`ROADMAP.md`](ROADMAP.md) for the current roadmap.
 
 Contributions are welcome.
 
-Before submitting changes:
+Before submitting changes, run:
 
 ```bash
-gofmt -w .
-go test ./...
-go test -race ./...
-go vet ./...
+make check
 ```
 
-Please read:
-
-- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before contributing.
 
 ---
 
@@ -584,21 +632,3 @@ Please read:
 Strata-Log is licensed under the MIT License.
 
 See [`LICENSE`](LICENSE) for the full license text.
-
----
-
-## Project Status
-
-Strata-Log is an actively developed Go backend project demonstrating:
-
-- concurrent processing
-- asynchronous pipelines
-- batching
-- persistent storage
-- retry and resilience patterns
-- HTTP API design
-- observability
-- automated testing
-- containerized deployment
-
-The current implementation is suitable for local development, experimentation, and demonstration of backend engineering practices.
