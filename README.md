@@ -1,10 +1,18 @@
 # Strata-Log
 
-A lightweight, fault-tolerant log ingestion and query service written in Go.
+**A fault-tolerant log ingestion and query service built in Go, designed to process structured logs asynchronously, persist them reliably, and provide operational visibility.**
 
-Strata-Log accepts structured application logs over HTTP, processes them asynchronously, batches writes, persists them to SQLite, exposes query endpoints, and provides Prometheus-compatible metrics.
+[![Go](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go\&logoColor=white)](https://go.dev/)
+[![SQLite](https://img.shields.io/badge/SQLite-Persistence-003B57?logo=sqlite\&logoColor=white)](https://www.sqlite.org/)
+[![Docker](https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker\&logoColor=white)](https://www.docker.com/)
+[![Prometheus](https://img.shields.io/badge/Prometheus-Metrics-E6522C?logo=prometheus\&logoColor=white)](https://prometheus.io/)
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI-2088FF?logo=githubactions\&logoColor=white)](https://github.com/features/actions)
+[![Make](https://img.shields.io/badge/Make-Build_Automation-427819?logo=gnu\&logoColor=white)](https://www.gnu.org/software/make/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-The project is designed as a practical Go backend system demonstrating concurrency, asynchronous processing, batching, persistence, retry handling, observability, graceful shutdown, testing, and containerized deployment.
+> A lightweight logging service that accepts structured events, processes them through an asynchronous pipeline, persists them to SQLite, and exposes the information operators need to understand what's happening.
+
+Strata-Log demonstrates practical **Go backend and distributed-systems engineering** patterns including concurrent processing, asynchronous pipelines, batching, durable persistence, retry and resilience mechanisms, HTTP API design, Prometheus observability, graceful shutdown, automated testing, and containerized deployment.
 
 ---
 
